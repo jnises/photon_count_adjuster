@@ -11,7 +11,7 @@ lto = true
 
 [dependencies]
 #native-windows-gui = "1.0.0"
-native-windows-gui = { git = "https://github.com/gabdube/native-windows-gui", rev = "035418d134f4be17fa88aca5a205b435eebdf1a4", features = ["combobox", "trackbar"] }
+native-windows-gui = { git = "https://github.com/gabdube/native-windows-gui", rev = "035418d134f4be17fa88aca5a205b435eebdf1a4", features = ["combobox", "trackbar", "embed-resource"] }
 #native-windows-derive = "1.0.0"
 native-windows-derive = { git = "https://github.com/gabdube/native-windows-gui", rev = "035418d134f4be17fa88aca5a205b435eebdf1a4" }
 ddc = "0.2.1"

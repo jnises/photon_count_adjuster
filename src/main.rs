@@ -18,14 +18,17 @@ use winapi::{
 
 #[derive(Default, NwgUi)]
 pub struct Brightness {
-    #[nwg_control(size: (300, 115), position: (300, 300), title: "Brightness", flags: "WINDOW|VISIBLE")]
+    #[nwg_resource(family: "Arial")]
+    font: nwg::Font,
+
+    #[nwg_control(size: (300, 115), position: (300, 300), title: "Brightness", flags: "WINDOW|VISIBLE", icon: nwg::EmbedResource::load(None).unwrap().icon(1).as_ref())]
     #[nwg_events( OnWindowClose: [Brightness::quit], OnInit: [Brightness::init] )]
     window: nwg::Window,
 
     #[nwg_layout(parent: window)]
     layout: nwg::GridLayout,
 
-    #[nwg_control()]
+    #[nwg_control(font: Some(&data.font))]
     #[nwg_layout_item(layout: layout, col: 0, row: 0)]
     #[nwg_events( OnComboxBoxSelection: [Brightness::monitor_selected] )]
     monitors: nwg::ComboBox<String>,
