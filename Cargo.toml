@@ -1,0 +1,14 @@
+[package]
+name = "brightness"
+version = "0.1.0"
+authors = ["joel nises <joel.nises@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+#native-windows-gui = "1.0.0"
+native-windows-gui = { git = "https://github.com/gabdube/native-windows-gui", rev = "035418d134f4be17fa88aca5a205b435eebdf1a4", features = ["combobox", "trackbar"] }
+#native-windows-derive = "1.0.0"
+native-windows-derive = { git = "https://github.com/gabdube/native-windows-gui", rev = "035418d134f4be17fa88aca5a205b435eebdf1a4" }
+ddc = "0.2.1"
+ddc-winapi = "0.2.0"
+winapi = { version = "0.3.8", features = ["highlevelmonitorconfigurationapi"] }
