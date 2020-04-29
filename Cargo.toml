@@ -3,6 +3,7 @@ name = "brightness"
 version = "0.1.0"
 authors = ["joel nises <joel.nises@gmail.com>"]
 edition = "2018"
+build = "build.rs"
 
 [profile.release]
 opt-level = 'z'  # Optimize for size.
@@ -16,3 +17,7 @@ native-windows-derive = { git = "https://github.com/gabdube/native-windows-gui",
 ddc = "0.2.1"
 ddc-winapi = "0.2.0"
 winapi = { version = "0.3.8", features = ["highlevelmonitorconfigurationapi"] }
+
+
+[build-dependencies]
+winres = "0.1"
