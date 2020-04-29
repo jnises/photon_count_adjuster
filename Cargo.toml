@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["joel nises <joel.nises@gmail.com>"]
 edition = "2018"
 
+[profile.release]
+opt-level = 'z'  # Optimize for size.
+lto = true
+
 [dependencies]
 #native-windows-gui = "1.0.0"
 native-windows-gui = { git = "https://github.com/gabdube/native-windows-gui", rev = "035418d134f4be17fa88aca5a205b435eebdf1a4", features = ["combobox", "trackbar"] }
