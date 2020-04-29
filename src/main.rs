@@ -45,8 +45,12 @@ impl Brightness {
                 if !monitors.is_empty() {
                     self.monitors.set_collection(monitors.iter().map(|m| m.description()).collect());
                     *self.monitor_data.borrow_mut() = monitors;
-                    self.monitors.set_selection(Some(0));
-                    self.monitor_selected();
+                    for (idx, m) in self.monitor_data.borrow().iter().enumerate() {
+                        if let Ok(_) = self.try_get_monitor_brightness(m.handle()) {
+                            self.monitors.set_selection(Some(idx));
+                            break;
+                        }
+                    }
                 }
             }
             Err(e) => {
@@ -74,21 +78,29 @@ impl Brightness {
         }
     }
 
-    fn monitor_selected(&self) {
-        let handle = self.get_selected_monitor();
+    fn try_get_monitor_brightness(&self, handle: HANDLE) -> Result<(), ()> {
         let mut minimum: DWORD = 0;
         let mut maximum: DWORD = 0;
         let mut current: DWORD = 0;
         match unsafe { GetMonitorBrightness(handle, &mut minimum, &mut current, &mut maximum) } {
             0 => {
                 self.brightness.set_enabled(false);
-                nwg::simple_message("Error", "Unable to get monitor brightness");
+                Err(())
             }
             _ => {
                 self.brightness.set_selection_range_pos(minimum as usize .. maximum as usize + 1);
                 self.brightness.set_pos(current as usize);
                 self.brightness.set_enabled(true);
+                Ok(())
             }
+        }
+
+    }
+
+    fn monitor_selected(&self) {
+        let handle = self.get_selected_monitor();
+        if let Err(_) = self.try_get_monitor_brightness(handle) {
+            nwg::simple_message("Error", "Unable to get monitor brightness");
         }
     }
 
