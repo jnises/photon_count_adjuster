@@ -25,7 +25,7 @@ pub struct Brightness {
     #[nwg_resource(family: "Arial")]
     font: nwg::Font,
 
-    #[nwg_control(size: (300, 115), position: (300, 300), title: "Brightness", flags: "WINDOW|VISIBLE", icon: get_exe_icon().as_ref())]
+    #[nwg_control(size: (300, 115), position: (300, 300), title: "Photon count adjuster", flags: "WINDOW|VISIBLE", icon: get_exe_icon().as_ref())]
     #[nwg_events( OnWindowClose: [Brightness::quit], OnInit: [Brightness::init] )]
     window: nwg::Window,
 
