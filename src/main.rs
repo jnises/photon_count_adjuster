@@ -21,12 +21,12 @@ fn get_exe_icon() -> Option<nwg::Icon> {
 }
 
 #[derive(Default, NwgUi)]
-pub struct Brightness {
+pub struct PhotonCountAdjuster {
     #[nwg_resource(family: "Arial")]
     font: nwg::Font,
 
     #[nwg_control(size: (300, 115), position: (300, 300), title: "Photon count adjuster", flags: "WINDOW|VISIBLE", icon: get_exe_icon().as_ref())]
-    #[nwg_events( OnWindowClose: [Brightness::quit], OnInit: [Brightness::init] )]
+    #[nwg_events( OnWindowClose: [PhotonCountAdjuster::quit], OnInit: [PhotonCountAdjuster::init] )]
     window: nwg::Window,
 
     #[nwg_layout(parent: window)]
@@ -34,18 +34,18 @@ pub struct Brightness {
 
     #[nwg_control(font: Some(&data.font))]
     #[nwg_layout_item(layout: layout, col: 0, row: 0)]
-    #[nwg_events( OnComboxBoxSelection: [Brightness::monitor_selected] )]
+    #[nwg_events( OnComboxBoxSelection: [PhotonCountAdjuster::monitor_selected] )]
     monitors: nwg::ComboBox<String>,
 
     #[nwg_control(range: Some(0..100), pos: Some(50))]
     #[nwg_layout_item(layout: layout, col: 0, row: 1)]
-    #[nwg_events( OnMouseMove: [Brightness::brightness_slider_updated] )]
+    #[nwg_events( OnMouseMove: [PhotonCountAdjuster::brightness_slider_updated] )]
     brightness_slider: nwg::TrackBar,
 
     monitor_data: RefCell<Vec<ddc_winapi::Monitor>>,
 }
 
-impl Brightness {
+impl PhotonCountAdjuster {
     fn init(&self) {
         match ddc_winapi::Monitor::enumerate() {
             Ok(monitors) => {
@@ -123,6 +123,6 @@ impl Brightness {
 
 fn main() {
     nwg::init().expect("Failed to init Native Windows GUI");
-    let _app = Brightness::build_ui(Default::default()).expect("Failed to build UI");
+    let _app = PhotonCountAdjuster::build_ui(Default::default()).expect("Failed to build UI");
     nwg::dispatch_thread_events();
 }
