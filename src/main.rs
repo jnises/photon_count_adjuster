@@ -16,12 +16,16 @@ use winapi::{
     shared::minwindef::DWORD,
 };
 
+fn get_exe_icon() -> Option<nwg::Icon> {
+    Some(nwg::EmbedResource::load(None).ok()?.icon(1)?)
+}
+
 #[derive(Default, NwgUi)]
 pub struct Brightness {
     #[nwg_resource(family: "Arial")]
     font: nwg::Font,
 
-    #[nwg_control(size: (300, 115), position: (300, 300), title: "Brightness", flags: "WINDOW|VISIBLE", icon: nwg::EmbedResource::load(None).unwrap().icon(1).as_ref())]
+    #[nwg_control(size: (300, 115), position: (300, 300), title: "Brightness", flags: "WINDOW|VISIBLE", icon: get_exe_icon().as_ref())]
     #[nwg_events( OnWindowClose: [Brightness::quit], OnInit: [Brightness::init] )]
     window: nwg::Window,
 
@@ -35,8 +39,8 @@ pub struct Brightness {
 
     #[nwg_control(range: Some(0..100), pos: Some(50))]
     #[nwg_layout_item(layout: layout, col: 0, row: 1)]
-    #[nwg_events( OnMouseMove: [Brightness::brightness_updated] )]
-    brightness: nwg::TrackBar,
+    #[nwg_events( OnMouseMove: [Brightness::brightness_slider_updated] )]
+    brightness_slider: nwg::TrackBar,
 
     monitor_data: RefCell<Vec<ddc_winapi::Monitor>>,
 }
@@ -48,6 +52,7 @@ impl Brightness {
                 if !monitors.is_empty() {
                     self.monitors.set_collection(monitors.iter().map(|m| m.description()).collect());
                     *self.monitor_data.borrow_mut() = monitors;
+                    self.brightness_slider.set_enabled(false);
                     for (idx, m) in self.monitor_data.borrow().iter().enumerate() {
                         if let Ok(_) = self.try_get_monitor_brightness(m.handle()) {
                             self.monitors.set_selection(Some(idx));
@@ -87,13 +92,13 @@ impl Brightness {
         let mut current: DWORD = 0;
         match unsafe { GetMonitorBrightness(handle, &mut minimum, &mut current, &mut maximum) } {
             0 => {
-                self.brightness.set_enabled(false);
+                self.brightness_slider.set_enabled(false);
                 Err(())
             }
             _ => {
-                self.brightness.set_selection_range_pos(minimum as usize .. maximum as usize + 1);
-                self.brightness.set_pos(current as usize);
-                self.brightness.set_enabled(true);
+                self.brightness_slider.set_selection_range_pos(minimum as usize .. maximum as usize + 1);
+                self.brightness_slider.set_pos(current as usize);
+                self.brightness_slider.set_enabled(true);
                 Ok(())
             }
         }
@@ -107,9 +112,9 @@ impl Brightness {
         }
     }
 
-    fn brightness_updated(&self) {
+    fn brightness_slider_updated(&self) {
         let handle = self.get_selected_monitor();
-        let brightness = self.brightness.pos() as DWORD;
+        let brightness = self.brightness_slider.pos() as DWORD;
         if unsafe { SetMonitorBrightness(handle, brightness) } == 0 {
                 nwg::simple_message("Error", "Unable to set monitor brightness");
         }
@@ -118,8 +123,6 @@ impl Brightness {
 
 fn main() {
     nwg::init().expect("Failed to init Native Windows GUI");
-
     let _app = Brightness::build_ui(Default::default()).expect("Failed to build UI");
-
     nwg::dispatch_thread_events();
 }
