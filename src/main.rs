@@ -17,7 +17,7 @@ use winapi::{
 };
 
 fn get_exe_icon() -> Option<nwg::Icon> {
-    Some(nwg::EmbedResource::load(None).ok()?.icon(1)?)
+    Some(nwg::EmbedResource::load(None).ok()?.icon(1, None)?)
 }
 
 #[derive(Default, NwgUi)]
