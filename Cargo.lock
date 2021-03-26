@@ -60,9 +60,9 @@ dependencies = [
 
 [[package]]
 name = "native-windows-gui"
-version = "1.0.6"
+version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "477e655587a5baeab739ebbd322e2e4de6331c1d2ae9a25ecf62a23b2d4e937c"
+checksum = "fe8d44e6cea6bba40a302d1ab3ee50c6d9f9714ab94a776b0db0a5521c49c9ce"
 dependencies = [
  "bitflags",
  "lazy_static",
@@ -73,7 +73,7 @@ dependencies = [
 
 [[package]]
 name = "photon_count_adjuster"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "ddc",
  "ddc-winapi",
@@ -119,9 +119,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.48"
+version = "1.0.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc371affeffc477f42a221a1e4297aedcea33d47d19b61455588bd9d8f6b19ac"
+checksum = "443b4178719c5a851e1bde36ce12da21d74a0e60b4d982ec3385a933c812f0f6"
 dependencies = [
  "proc-macro2",
  "quote",
