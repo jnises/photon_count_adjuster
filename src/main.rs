@@ -14,7 +14,7 @@ use winapi::{
 };
 
 fn get_exe_icon() -> Option<nwg::Icon> {
-    Some(nwg::EmbedResource::load(None).ok()?.icon(1, None)?)
+    nwg::EmbedResource::load(None).ok()?.icon(1, None)
 }
 
 #[derive(Default, NwgUi)]
@@ -52,7 +52,7 @@ impl PhotonCountAdjuster {
                     *self.monitor_data.borrow_mut() = monitors;
                     self.brightness_slider.set_enabled(false);
                     for (idx, m) in self.monitor_data.borrow().iter().enumerate() {
-                        if let Ok(_) = self.try_get_monitor_brightness(m.handle()) {
+                        if self.try_get_monitor_brightness(m.handle()).is_ok() {
                             self.monitors.set_selection(Some(idx));
                             break;
                         }
@@ -105,7 +105,7 @@ impl PhotonCountAdjuster {
 
     fn monitor_selected(&self) {
         let handle = self.get_selected_monitor();
-        if let Err(_) = self.try_get_monitor_brightness(handle) {
+        if self.try_get_monitor_brightness(handle).is_err() {
             nwg::simple_message("Error", "Unable to get monitor brightness");
         }
     }
