@@ -16,12 +16,12 @@ jobs:
           toolchain: 1.56.0
           default: true
       - name: Build
-        run: |
-          cargo build --release
+        run: cargo build --release
       - name: Zip
         run: |
           cd target/release
-          zip photon_count_adjuster.zip photon_count_adjuster.exe
+          Compress-Archive -Path photon_count_adjuster.exe -DestinationPath photon_count_adjuster.zip
+        shell: powershell
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
