@@ -1,19 +1,16 @@
 #![windows_subsystem = "windows"]
 
-extern crate native_windows_gui as nwg;
 extern crate native_windows_derive as nwd;
+extern crate native_windows_gui as nwg;
 use nwd::NwgUi;
 use nwg::NativeUi;
 use std::cell::RefCell;
 use winapi::{
+    shared::minwindef::DWORD,
     um::{
-        highlevelmonitorconfigurationapi::{
-            GetMonitorBrightness,
-            SetMonitorBrightness,
-        },
+        highlevelmonitorconfigurationapi::{GetMonitorBrightness, SetMonitorBrightness},
         winnt::HANDLE,
     },
-    shared::minwindef::DWORD,
 };
 
 fn get_exe_icon() -> Option<nwg::Icon> {
@@ -50,7 +47,8 @@ impl PhotonCountAdjuster {
         match ddc_winapi::Monitor::enumerate() {
             Ok(monitors) => {
                 if !monitors.is_empty() {
-                    self.monitors.set_collection(monitors.iter().map(|m| m.description()).collect());
+                    self.monitors
+                        .set_collection(monitors.iter().map(|m| m.description()).collect());
                     *self.monitor_data.borrow_mut() = monitors;
                     self.brightness_slider.set_enabled(false);
                     for (idx, m) in self.monitor_data.borrow().iter().enumerate() {
@@ -96,13 +94,13 @@ impl PhotonCountAdjuster {
                 Err(())
             }
             _ => {
-                self.brightness_slider.set_selection_range_pos(minimum as usize .. maximum as usize + 1);
+                self.brightness_slider
+                    .set_selection_range_pos(minimum as usize..maximum as usize + 1);
                 self.brightness_slider.set_pos(current as usize);
                 self.brightness_slider.set_enabled(true);
                 Ok(())
             }
         }
-
     }
 
     fn monitor_selected(&self) {
@@ -116,7 +114,7 @@ impl PhotonCountAdjuster {
         let handle = self.get_selected_monitor();
         let brightness = self.brightness_slider.pos() as DWORD;
         if unsafe { SetMonitorBrightness(handle, brightness) } == 0 {
-                nwg::simple_message("Error", "Unable to set monitor brightness");
+            nwg::simple_message("Error", "Unable to set monitor brightness");
         }
     }
 }
