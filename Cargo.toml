@@ -1,6 +1,6 @@
 [package]
 name = "photon_count_adjuster"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["joel nises <joel.nises@gmail.com>"]
 edition = "2021"
 build = "build.rs"
