@@ -1,7 +1,7 @@
 #![windows_subsystem = "windows"]
 
-extern crate native_windows_derive as nwd;
-extern crate native_windows_gui as nwg;
+use native_windows_derive as nwd;
+use native_windows_gui as nwg;
 use nwd::NwgUi;
 use nwg::NativeUi;
 use std::cell::RefCell;
