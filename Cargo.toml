@@ -1,21 +1,20 @@
 [package]
-name = "photon_count_adjuster"
-version = "1.2.1"
 authors = ["joel nises <joel.nises@gmail.com>"]
-edition = "2021"
 build = "build.rs"
+edition = "2021"
+name = "photon_count_adjuster"
+version = "2.0.0"
 
 [profile.release]
-opt-level = 'z'  # Optimize for size.
-lto = true
+lto = true 
+opt-level = "z" # Optimize for size.
 
 [dependencies]
-native-windows-gui = { version = "1.0", features = ["combobox", "trackbar", "embed-resource"] }
-native-windows-derive = "1.0"
 ddc = "0.2.2"
 ddc-winapi = "0.2.0"
-winapi = { version = "0.3.9", features = ["highlevelmonitorconfigurationapi"] }
-
+native-windows-derive = "1.0"
+native-windows-gui = {version = "1.0", features = ["combobox", "trackbar", "embed-resource", "high-dpi"]}
+winapi = {version = "0.3.9", features = ["highlevelmonitorconfigurationapi"]}
 
 [build-dependencies]
 winres = "0.1"

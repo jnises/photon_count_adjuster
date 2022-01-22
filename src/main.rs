@@ -19,7 +19,7 @@ fn get_exe_icon() -> Option<nwg::Icon> {
 
 #[derive(Default, NwgUi)]
 pub struct PhotonCountAdjuster {
-    #[nwg_resource(family: "Arial", size: 16)]
+    #[nwg_resource(family: "Sergoe UI", size: 16)]
     font: nwg::Font,
 
     #[nwg_control(size: (300, 115), position: (300, 300), title: "Photon count adjuster", flags: "WINDOW|VISIBLE", icon: get_exe_icon().as_ref())]
