@@ -1,4 +1,4 @@
-Tool to change the brightness of screens in Windows.
+Tool to change the brightness of monitors in Windows.
 
 ![Screenshot](screenshot.png)
 
