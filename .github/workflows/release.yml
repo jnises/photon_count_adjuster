@@ -22,7 +22,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: 1.58.1
+          toolchain: 1.61.0
           default: true
       - name: Build
         run: cargo build --release
