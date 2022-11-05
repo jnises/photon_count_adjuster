@@ -143,7 +143,7 @@ checksum = "86f0b0d4bf799edbc74508c1e8bf170ff5f41238e5f8225603ca7caaae2b7860"
 
 [[package]]
 name = "photon_count_adjuster"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "ddc",
  "ddc-winapi",
