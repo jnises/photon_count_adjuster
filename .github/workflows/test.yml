@@ -14,8 +14,8 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/cache@v2
+      - uses: actions/checkout@v3
+      - uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/bin/
@@ -23,7 +23,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}      
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}          
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
