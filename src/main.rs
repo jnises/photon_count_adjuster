@@ -1,3 +1,4 @@
+#![warn(clippy::all, rust_2018_idioms)]
 #![windows_subsystem = "windows"]
 
 use native_windows_derive as nwd;
