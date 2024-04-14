@@ -1,3 +1,4 @@
+#![warn(clippy::all, rust_2018_idioms)]
 #![windows_subsystem = "windows"]
 
 use native_windows_derive as nwd;
@@ -39,11 +40,16 @@ pub struct PhotonCountAdjuster {
     #[nwg_events( OnMouseMove: [PhotonCountAdjuster::brightness_slider_updated] )]
     brightness_slider: nwg::TrackBar,
 
+    #[nwg_control()]
+    #[nwg_layout_item(layout: layout, col: 0, row: 2)]
+    status_message: nwg::Label,
+
     monitor_data: RefCell<Vec<ddc_winapi::Monitor>>,
 }
 
 impl PhotonCountAdjuster {
     fn init(&self) {
+        self.set_status("");
         match ddc_winapi::Monitor::enumerate() {
             Ok(monitors) => {
                 if !monitors.is_empty() {
@@ -52,7 +58,7 @@ impl PhotonCountAdjuster {
                     *self.monitor_data.borrow_mut() = monitors;
                     self.brightness_slider.set_enabled(false);
                     for (idx, m) in self.monitor_data.borrow().iter().enumerate() {
-                        if self.try_get_monitor_brightness(m.handle()).is_ok() {
+                        if self.update_monitor_brightness(m.handle()) {
                             self.monitors.set_selection(Some(idx));
                             break;
                         }
@@ -84,30 +90,38 @@ impl PhotonCountAdjuster {
         }
     }
 
-    fn try_get_monitor_brightness(&self, handle: HANDLE) -> Result<(), ()> {
+    /// returns true if successful
+    fn update_monitor_brightness(&self, handle: HANDLE) -> bool {
         let mut minimum: DWORD = 0;
         let mut maximum: DWORD = 0;
         let mut current: DWORD = 0;
         match unsafe { GetMonitorBrightness(handle, &mut minimum, &mut current, &mut maximum) } {
             0 => {
                 self.brightness_slider.set_enabled(false);
-                Err(())
+                let mut icon = nwg::Icon::default();
+                if let Err(e) = nwg::Icon::builder()
+                    .source_system(Some(nwg::OemIcon::Warning))
+                    .build(&mut icon)
+                {
+                    nwg::fatal_message("Error", &format!("Unable to load icon: {e}"));
+                }
+                self.set_status("Unable to control brightness for this monitor");
+                false
             }
             _ => {
                 self.brightness_slider
                     .set_selection_range_pos(minimum as usize..maximum as usize + 1);
                 self.brightness_slider.set_pos(current as usize);
                 self.brightness_slider.set_enabled(true);
-                Ok(())
+                self.set_status("");
+                true
             }
         }
     }
 
     fn monitor_selected(&self) {
         let handle = self.get_selected_monitor();
-        if self.try_get_monitor_brightness(handle).is_err() {
-            nwg::simple_message("Error", "Unable to get monitor brightness");
-        }
+        self.update_monitor_brightness(handle);
     }
 
     fn brightness_slider_updated(&self) {
@@ -116,6 +130,11 @@ impl PhotonCountAdjuster {
         if unsafe { SetMonitorBrightness(handle, brightness) } == 0 {
             nwg::simple_message("Error", "Unable to set monitor brightness");
         }
+    }
+
+    fn set_status(&self, message: &str) {
+        self.status_message.set_text(message);
+        self.status_message.set_visible(!message.is_empty());
     }
 }
 
