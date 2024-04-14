@@ -1,16 +1,15 @@
-Tool to change the brightness of monitors in Windows.
+Tool to change the brightness of monitors on Windows.
 
 ![Screenshot](screenshot.png)
 
 Requirements
 ============
-Windows  
-rust (https://rustup.rs)  
-Visual studio c++ build tools (https://visualstudio.microsoft.com/downloads/)  
+* Windows  
+* rust (https://rustup.rs)  
+* Visual studio c++ build tools (https://visualstudio.microsoft.com/downloads/)  
 
 Build
 =====
 ```shell
 cargo build --release
 ```
-Binary ends up in `target/release/photon_count_adjuster.exe`
