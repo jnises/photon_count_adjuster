@@ -99,7 +99,10 @@ impl PhotonCountAdjuster {
             0 => {
                 self.brightness_slider.set_enabled(false);
                 let mut icon = nwg::Icon::default();
-                if let Err(e) = nwg::Icon::builder().source_system(Some(nwg::OemIcon::Warning)).build(&mut icon) {
+                if let Err(e) = nwg::Icon::builder()
+                    .source_system(Some(nwg::OemIcon::Warning))
+                    .build(&mut icon)
+                {
                     nwg::fatal_message("Error", &format!("Unable to load icon: {e}"));
                 }
                 self.set_status("Unable to control brightness for this monitor");
