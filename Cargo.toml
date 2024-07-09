@@ -8,8 +8,8 @@ version = "2.1.0"
 [profile.release]
 lto = true
 opt-level = "s" # Optimize for size.
-panic = "abort"
-strip = true
+#panic = "abort"
+#strip = true
 
 [dependencies]
 ddc = "0.2.2"
