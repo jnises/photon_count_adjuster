@@ -13,3 +13,9 @@ Build
 ```shell
 cargo build --release
 ```
+
+Install using cargo
+===================
+```shell
+cargo install --git https://github.com/jnises/photon_count_adjuster.git
+```
