@@ -6,30 +6,40 @@ compile_error!("photon_count_adjuster supports macOS and Windows");
 
 use ddc_hi::{Ddc, Display};
 use eframe::egui;
-use std::time::{Duration, Instant};
+use std::{
+    sync::mpsc::{self, Receiver, RecvTimeoutError, Sender},
+    time::{Duration, Instant},
+};
 
 const BRIGHTNESS_VCP_CODE: u8 = 0x10;
 const BRIGHTNESS_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
 const DISPLAY_SCAN_INTERVAL: Duration = Duration::from_secs(10);
+const WORKER_TICK: Duration = Duration::from_millis(250);
 
-struct Monitor {
-    display: Display,
+#[derive(Clone)]
+struct MonitorSnapshot {
+    id: String,
     label: String,
     brightness: u16,
     maximum: u16,
     error: Option<String>,
 }
 
-impl Monitor {
+struct MonitorDevice {
+    display: Display,
+    snapshot: MonitorSnapshot,
+}
+
+impl MonitorDevice {
     fn new(display: Display) -> Self {
-        let label = display.info.to_string();
-        let mut monitor = Self {
-            display,
-            label,
+        let snapshot = MonitorSnapshot {
+            id: display.info.id.clone(),
+            label: display.info.to_string(),
             brightness: 0,
             maximum: 100,
             error: None,
         };
+        let mut monitor = Self { display, snapshot };
         monitor.refresh();
         monitor
     }
@@ -37,87 +47,193 @@ impl Monitor {
     fn refresh(&mut self) {
         match self.display.handle.get_vcp_feature(BRIGHTNESS_VCP_CODE) {
             Ok(value) if value.maximum() > 0 => {
-                self.brightness = value.value();
-                self.maximum = value.maximum();
-                self.error = None;
+                self.snapshot.brightness = value.value();
+                self.snapshot.maximum = value.maximum();
+                self.snapshot.error = None;
             }
             Ok(_) => {
-                self.error = Some("Monitor reported an invalid brightness range".to_owned());
+                self.snapshot.error =
+                    Some("Monitor reported an invalid brightness range".to_owned());
             }
             Err(error) => {
-                self.error = Some(format!("Unable to read brightness: {error}"));
+                self.snapshot.error = Some(format!("Unable to read brightness: {error}"));
             }
         }
     }
 
-    fn set_brightness(&mut self) {
+    fn set_brightness(&mut self, brightness: u16) {
         match self
             .display
             .handle
-            .set_vcp_feature(BRIGHTNESS_VCP_CODE, self.brightness)
+            .set_vcp_feature(BRIGHTNESS_VCP_CODE, brightness)
         {
-            Ok(()) => self.error = None,
-            Err(error) => self.error = Some(format!("Unable to set brightness: {error}")),
+            Ok(()) => {
+                self.snapshot.brightness = brightness;
+                self.snapshot.error = None;
+            }
+            Err(error) => {
+                self.snapshot.error = Some(format!("Unable to set brightness: {error}"));
+            }
+        }
+    }
+}
+
+enum MonitorCommand {
+    SetPolling(bool),
+    SetBrightness { id: String, brightness: u16 },
+    Rescan,
+}
+
+fn scan_displays() -> Vec<MonitorDevice> {
+    Display::enumerate()
+        .into_iter()
+        .map(MonitorDevice::new)
+        .collect()
+}
+
+fn publish_snapshots(
+    monitors: &[MonitorDevice],
+    updates: &Sender<Vec<MonitorSnapshot>>,
+    ctx: &egui::Context,
+) -> bool {
+    let snapshots = monitors
+        .iter()
+        .map(|monitor| monitor.snapshot.clone())
+        .collect();
+    if updates.send(snapshots).is_err() {
+        // The UI owns the receiver, so disconnection means the application has closed.
+        return false;
+    }
+    ctx.request_repaint();
+    true
+}
+
+fn select_monitor(monitors: &[MonitorSnapshot], selected_id: Option<&str>) -> usize {
+    selected_id
+        .and_then(|id| monitors.iter().position(|monitor| monitor.id == id))
+        .or_else(|| monitors.iter().position(|monitor| monitor.error.is_none()))
+        .unwrap_or_default()
+}
+
+fn run_monitor_worker(
+    commands: Receiver<MonitorCommand>,
+    updates: Sender<Vec<MonitorSnapshot>>,
+    ctx: egui::Context,
+) {
+    let mut monitors = scan_displays();
+    if !publish_snapshots(&monitors, &updates, &ctx) {
+        return;
+    }
+
+    let mut polling = false;
+    let mut last_brightness_refresh = Instant::now();
+    let mut last_display_scan = Instant::now();
+
+    loop {
+        let mut changed = false;
+        match commands.recv_timeout(WORKER_TICK) {
+            Ok(MonitorCommand::SetPolling(enabled)) => {
+                if enabled && !polling {
+                    monitors = scan_displays();
+                    let now = Instant::now();
+                    last_brightness_refresh = now;
+                    last_display_scan = now;
+                    changed = true;
+                }
+                polling = enabled;
+            }
+            Ok(MonitorCommand::SetBrightness { id, brightness }) => {
+                if let Some(monitor) = monitors
+                    .iter_mut()
+                    .find(|monitor| monitor.snapshot.id == id)
+                {
+                    monitor.set_brightness(brightness);
+                    last_brightness_refresh = Instant::now();
+                    changed = true;
+                }
+            }
+            Ok(MonitorCommand::Rescan) => {
+                monitors = scan_displays();
+                let now = Instant::now();
+                last_brightness_refresh = now;
+                last_display_scan = now;
+                changed = true;
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                // The command sender is owned by the UI, so disconnection means it has closed.
+                break;
+            }
+        }
+
+        let now = Instant::now();
+        if polling && now.duration_since(last_display_scan) >= DISPLAY_SCAN_INTERVAL {
+            monitors = scan_displays();
+            last_brightness_refresh = now;
+            last_display_scan = now;
+            changed = true;
+        } else if polling
+            && now.duration_since(last_brightness_refresh) >= BRIGHTNESS_REFRESH_INTERVAL
+        {
+            for monitor in &mut monitors {
+                monitor.refresh();
+            }
+            last_brightness_refresh = now;
+            changed = true;
+        }
+
+        if changed && !publish_snapshots(&monitors, &updates, &ctx) {
+            break;
         }
     }
 }
 
 struct PhotonCountAdjuster {
-    monitors: Vec<Monitor>,
+    monitors: Vec<MonitorSnapshot>,
     selected: usize,
-    last_brightness_refresh: Instant,
-    last_display_scan: Instant,
-    window_was_focused: bool,
+    commands: Sender<MonitorCommand>,
+    updates: Receiver<Vec<MonitorSnapshot>>,
+    polling_enabled: bool,
     slider_active: bool,
-}
-
-impl Default for PhotonCountAdjuster {
-    fn default() -> Self {
-        let now = Instant::now();
-        let monitors: Vec<_> = Display::enumerate().into_iter().map(Monitor::new).collect();
-        let selected = monitors
-            .iter()
-            .position(|monitor| monitor.error.is_none())
-            .unwrap_or_default();
-        Self {
-            monitors,
-            selected,
-            last_brightness_refresh: now,
-            last_display_scan: now,
-            window_was_focused: false,
-            slider_active: false,
-        }
-    }
+    worker_error: Option<String>,
 }
 
 impl PhotonCountAdjuster {
-    fn refresh_selected(&mut self) {
-        if let Some(monitor) = self.monitors.get_mut(self.selected) {
-            monitor.refresh();
+    fn new(ctx: &egui::Context) -> Self {
+        let (command_tx, command_rx) = mpsc::channel();
+        let (update_tx, update_rx) = mpsc::channel();
+        let worker_ctx = ctx.clone();
+        std::thread::Builder::new()
+            .name("monitor-ddc".to_owned())
+            .spawn(move || run_monitor_worker(command_rx, update_tx, worker_ctx))
+            .expect("failed to start DDC monitor worker");
+        Self {
+            monitors: Vec::new(),
+            selected: 0,
+            commands: command_tx,
+            updates: update_rx,
+            polling_enabled: false,
+            slider_active: false,
+            worker_error: None,
         }
-        self.last_brightness_refresh = Instant::now();
     }
 
-    fn scan_displays(&mut self) {
-        let selected_id = self
-            .monitors
-            .get(self.selected)
-            .map(|monitor| monitor.display.info.id.clone());
-        let monitors: Vec<_> = Display::enumerate().into_iter().map(Monitor::new).collect();
-        let selected = selected_id
-            .as_deref()
-            .and_then(|id| {
-                monitors
-                    .iter()
-                    .position(|monitor| monitor.display.info.id == id)
-            })
-            .or_else(|| monitors.iter().position(|monitor| monitor.error.is_none()))
-            .unwrap_or_default();
-        let now = Instant::now();
-        self.monitors = monitors;
-        self.selected = selected;
-        self.last_brightness_refresh = now;
-        self.last_display_scan = now;
+    fn send_command(&mut self, command: MonitorCommand) {
+        if let Err(error) = self.commands.send(command) {
+            self.worker_error = Some(format!("Monitor worker stopped: {error}"));
+        }
+    }
+
+    fn apply_updates(&mut self) {
+        for monitors in self.updates.try_iter() {
+            let selected_id = self
+                .monitors
+                .get(self.selected)
+                .map(|monitor| monitor.id.as_str());
+            let selected = select_monitor(&monitors, selected_id);
+            self.monitors = monitors;
+            self.selected = selected;
+        }
     }
 }
 
@@ -171,22 +287,13 @@ fn rescan_button(ui: &mut egui::Ui) -> egui::Response {
 
 impl eframe::App for PhotonCountAdjuster {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.apply_updates();
         let focused = ctx.input(|input| input.viewport().focused.unwrap_or(false));
-        let focus_gained = focused && !self.window_was_focused;
-        let now = Instant::now();
-
-        // DDC/CI has no change notifications, so bounded polling keeps external changes visible.
-        if focused && !self.slider_active {
-            if focus_gained || now.duration_since(self.last_display_scan) >= DISPLAY_SCAN_INTERVAL {
-                self.scan_displays();
-            } else if now.duration_since(self.last_brightness_refresh)
-                >= BRIGHTNESS_REFRESH_INTERVAL
-            {
-                self.refresh_selected();
-            }
+        let polling_enabled = focused && !self.slider_active;
+        if polling_enabled != self.polling_enabled {
+            self.send_command(MonitorCommand::SetPolling(polling_enabled));
+            self.polling_enabled = polling_enabled;
         }
-
-        self.window_was_focused = focused;
         ctx.request_repaint_after(Duration::from_secs(1));
     }
 
@@ -194,17 +301,21 @@ impl eframe::App for PhotonCountAdjuster {
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
             ui.set_min_size(ui.available_size());
 
+            if let Some(error) = &self.worker_error {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+                return;
+            }
+
             if self.monitors.is_empty() {
                 ui.label("No DDC/CI displays found.");
                 ui.add_space(6.0);
                 if rescan_button(ui).clicked() {
-                    self.scan_displays();
+                    self.send_command(MonitorCommand::Rescan);
                 }
                 self.slider_active = false;
                 return;
             }
 
-            let previous_selection = self.selected;
             ui.label(egui::RichText::new("Display").small().weak());
             let scan = ui
                 .horizontal(|ui| {
@@ -222,34 +333,35 @@ impl eframe::App for PhotonCountAdjuster {
                     rescan_button(ui).clicked()
                 })
                 .inner;
-
             if scan {
-                self.scan_displays();
-                return;
+                self.send_command(MonitorCommand::Rescan);
             }
 
-            if self.selected != previous_selection {
-                self.refresh_selected();
-            }
-
-            {
+            let brightness_change = {
                 let monitor = &mut self.monitors[self.selected];
                 ui.add_space(10.0);
-                ui.label(egui::RichText::new("Brightness").small().weak());
+                let brightness_label = ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Brightness").small().weak());
+                    if let Some(error) = &monitor.error {
+                        ui.colored_label(ui.visuals().error_fg_color, "Error")
+                            .on_hover_text(error);
+                    }
+                });
+                if let Some(error) = &monitor.error {
+                    brightness_label.response.on_hover_text(error);
+                }
+
                 ui.spacing_mut().slider_width = (ui.available_width() - 55.0).max(100.0);
                 let slider = egui::Slider::new(&mut monitor.brightness, 0..=monitor.maximum);
                 let response = ui.add_enabled_ui(monitor.error.is_none(), |ui| ui.add(slider));
                 let response = response.inner;
                 self.slider_active = response.dragged();
-                if response.changed() {
-                    monitor.set_brightness();
-                    self.last_brightness_refresh = Instant::now();
-                }
-
-                if let Some(error) = &monitor.error {
-                    ui.add_space(8.0);
-                    ui.colored_label(ui.visuals().error_fg_color, error);
-                }
+                response
+                    .changed()
+                    .then(|| (monitor.id.clone(), monitor.brightness))
+            };
+            if let Some((id, brightness)) = brightness_change {
+                self.send_command(MonitorCommand::SetBrightness { id, brightness });
             }
         });
     }
@@ -265,6 +377,37 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Photon count adjuster",
         options,
-        Box::new(|_creation_context| Ok(Box::<PhotonCountAdjuster>::default())),
+        Box::new(|creation_context| {
+            Ok(Box::new(PhotonCountAdjuster::new(
+                &creation_context.egui_ctx,
+            )))
+        }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MonitorSnapshot, select_monitor};
+
+    fn monitor(id: &str, controllable: bool) -> MonitorSnapshot {
+        MonitorSnapshot {
+            id: id.to_owned(),
+            label: id.to_owned(),
+            brightness: 50,
+            maximum: 100,
+            error: (!controllable).then(|| "unavailable".to_owned()),
+        }
+    }
+
+    #[test]
+    fn preserves_selected_monitor_after_rescan() {
+        let monitors = vec![monitor("first", true), monitor("selected", true)];
+        assert_eq!(select_monitor(&monitors, Some("selected")), 1);
+    }
+
+    #[test]
+    fn falls_back_to_first_controllable_monitor() {
+        let monitors = vec![monitor("unavailable", false), monitor("working", true)];
+        assert_eq!(select_monitor(&monitors, Some("disconnected")), 1);
+    }
 }

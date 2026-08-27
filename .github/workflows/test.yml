@@ -19,8 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-08-26
           components: clippy,rustfmt
       - run: cargo check --locked
       - run: cargo test --locked
