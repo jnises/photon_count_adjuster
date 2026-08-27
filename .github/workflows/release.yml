@@ -5,35 +5,58 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    runs-on: windows-2022
+    strategy:
+      matrix:
+        include:
+          - os: macos-15
+            artifact: photon_count_adjuster-macos
+            archive: target/release/photon_count_adjuster-macos.zip
+          - os: windows-2022
+            artifact: photon_count_adjuster-windows
+            archive: target/release/photon_count_adjuster-windows.zip
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Build
-        run: cargo build --release
-      - name: Zip
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-08-26
+      - run: cargo build --release --locked
+      - name: Bundle macOS application
+        if: runner.os == 'macOS'
         run: |
-          cd target/release
-          Compress-Archive -Path photon_count_adjuster.exe -DestinationPath photon_count_adjuster.zip
-        shell: powershell
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          mkdir -p "target/release/Photon Count Adjuster.app/Contents/MacOS"
+          cp target/release/photon_count_adjuster "target/release/Photon Count Adjuster.app/Contents/MacOS/"
+          cp macos/Info.plist "target/release/Photon Count Adjuster.app/Contents/"
+          ditto -c -k --sequesterRsrc --keepParent "target/release/Photon Count Adjuster.app" target/release/photon_count_adjuster-macos.zip
+      - name: Package Windows application
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path target/release/photon_count_adjuster.exe -DestinationPath target/release/photon_count_adjuster-windows.zip
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
-      - uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.archive }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./target/release/photon_count_adjuster.zip
-          asset_name: photon_count_adjuster.zip
-          asset_content_type: application/zip
+          path: artifacts
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ github.ref_name }}"
+          artifacts/photon_count_adjuster-macos/photon_count_adjuster-macos.zip
+          artifacts/photon_count_adjuster-windows/photon_count_adjuster-windows.zip
+          --repo "${{ github.repository }}"
+          --title "Release ${{ github.ref_name }}"
+          --generate-notes
