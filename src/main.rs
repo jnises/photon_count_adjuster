@@ -7,7 +7,10 @@ compile_error!("photon_count_adjuster supports macOS and Windows");
 use ddc_hi::{Ddc, Display};
 use eframe::egui;
 use std::{
-    sync::mpsc::{self, Receiver, RecvTimeoutError, Sender},
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, Receiver, RecvTimeoutError, Sender},
+    },
     time::{Duration, Instant},
 };
 
@@ -22,6 +25,11 @@ struct MonitorSnapshot {
     label: String,
     brightness: u16,
     maximum: u16,
+    error: Option<String>,
+}
+
+struct MonitorUpdate {
+    monitors: Vec<MonitorSnapshot>,
     error: Option<String>,
 }
 
@@ -80,7 +88,6 @@ impl MonitorDevice {
 
 enum MonitorCommand {
     SetPolling(bool),
-    SetBrightness { id: String, brightness: u16 },
     Rescan,
 }
 
@@ -93,14 +100,18 @@ fn scan_displays() -> Vec<MonitorDevice> {
 
 fn publish_snapshots(
     monitors: &[MonitorDevice],
-    updates: &Sender<Vec<MonitorSnapshot>>,
+    error: Option<&str>,
+    updates: &Sender<MonitorUpdate>,
     ctx: &egui::Context,
 ) -> bool {
-    let snapshots = monitors
-        .iter()
-        .map(|monitor| monitor.snapshot.clone())
-        .collect();
-    if updates.send(snapshots).is_err() {
+    let update = MonitorUpdate {
+        monitors: monitors
+            .iter()
+            .map(|monitor| monitor.snapshot.clone())
+            .collect(),
+        error: error.map(str::to_owned),
+    };
+    if updates.send(update).is_err() {
         // The UI owns the receiver, so disconnection means the application has closed.
         return false;
     }
@@ -117,24 +128,48 @@ fn select_monitor(monitors: &[MonitorSnapshot], selected_id: Option<&str>) -> us
 
 fn run_monitor_worker(
     commands: Receiver<MonitorCommand>,
-    updates: Sender<Vec<MonitorSnapshot>>,
+    updates: Sender<MonitorUpdate>,
+    brightness_request: Arc<Mutex<Option<(String, u16)>>>,
     ctx: egui::Context,
 ) {
     let mut monitors = scan_displays();
-    if !publish_snapshots(&monitors, &updates, &ctx) {
+    if !publish_snapshots(&monitors, None, &updates, &ctx) {
         return;
     }
 
     let mut polling = false;
+    let mut worker_error = None;
     let mut last_brightness_refresh = Instant::now();
     let mut last_display_scan = Instant::now();
 
     loop {
         let mut changed = false;
+        // A single shared slot coalesces rapid slider events while a slow DDC write is in flight.
+        let requested_brightness = brightness_request
+            .lock()
+            .expect("brightness request mutex poisoned")
+            .take();
+        if let Some((id, brightness)) = requested_brightness {
+            if let Some(monitor) = monitors
+                .iter_mut()
+                .find(|monitor| monitor.snapshot.id == id)
+            {
+                monitor.set_brightness(brightness);
+                worker_error = None;
+            } else {
+                worker_error = Some(format!(
+                    "Unable to set brightness: display {id} is no longer connected"
+                ));
+            }
+            last_brightness_refresh = Instant::now();
+            changed = true;
+        }
+
         match commands.recv_timeout(WORKER_TICK) {
             Ok(MonitorCommand::SetPolling(enabled)) => {
                 if enabled && !polling {
                     monitors = scan_displays();
+                    worker_error = None;
                     let now = Instant::now();
                     last_brightness_refresh = now;
                     last_display_scan = now;
@@ -142,18 +177,9 @@ fn run_monitor_worker(
                 }
                 polling = enabled;
             }
-            Ok(MonitorCommand::SetBrightness { id, brightness }) => {
-                if let Some(monitor) = monitors
-                    .iter_mut()
-                    .find(|monitor| monitor.snapshot.id == id)
-                {
-                    monitor.set_brightness(brightness);
-                    last_brightness_refresh = Instant::now();
-                    changed = true;
-                }
-            }
             Ok(MonitorCommand::Rescan) => {
                 monitors = scan_displays();
+                worker_error = None;
                 let now = Instant::now();
                 last_brightness_refresh = now;
                 last_display_scan = now;
@@ -182,7 +208,7 @@ fn run_monitor_worker(
             changed = true;
         }
 
-        if changed && !publish_snapshots(&monitors, &updates, &ctx) {
+        if changed && !publish_snapshots(&monitors, worker_error.as_deref(), &updates, &ctx) {
             break;
         }
     }
@@ -192,7 +218,8 @@ struct PhotonCountAdjuster {
     monitors: Vec<MonitorSnapshot>,
     selected: usize,
     commands: Sender<MonitorCommand>,
-    updates: Receiver<Vec<MonitorSnapshot>>,
+    updates: Receiver<MonitorUpdate>,
+    brightness_request: Arc<Mutex<Option<(String, u16)>>>,
     polling_enabled: bool,
     slider_active: bool,
     worker_error: Option<String>,
@@ -202,16 +229,21 @@ impl PhotonCountAdjuster {
     fn new(ctx: &egui::Context) -> Self {
         let (command_tx, command_rx) = mpsc::channel();
         let (update_tx, update_rx) = mpsc::channel();
+        let brightness_request = Arc::new(Mutex::new(None));
+        let worker_brightness_request = Arc::clone(&brightness_request);
         let worker_ctx = ctx.clone();
         std::thread::Builder::new()
             .name("monitor-ddc".to_owned())
-            .spawn(move || run_monitor_worker(command_rx, update_tx, worker_ctx))
+            .spawn(move || {
+                run_monitor_worker(command_rx, update_tx, worker_brightness_request, worker_ctx)
+            })
             .expect("failed to start DDC monitor worker");
         Self {
             monitors: Vec::new(),
             selected: 0,
             commands: command_tx,
             updates: update_rx,
+            brightness_request,
             polling_enabled: false,
             slider_active: false,
             worker_error: None,
@@ -225,14 +257,15 @@ impl PhotonCountAdjuster {
     }
 
     fn apply_updates(&mut self) {
-        for monitors in self.updates.try_iter() {
+        for update in self.updates.try_iter() {
             let selected_id = self
                 .monitors
                 .get(self.selected)
                 .map(|monitor| monitor.id.as_str());
-            let selected = select_monitor(&monitors, selected_id);
-            self.monitors = monitors;
+            let selected = select_monitor(&update.monitors, selected_id);
+            self.monitors = update.monitors;
             self.selected = selected;
+            self.worker_error = update.error;
         }
     }
 }
@@ -361,7 +394,10 @@ impl eframe::App for PhotonCountAdjuster {
                     .then(|| (monitor.id.clone(), monitor.brightness))
             };
             if let Some((id, brightness)) = brightness_change {
-                self.send_command(MonitorCommand::SetBrightness { id, brightness });
+                *self
+                    .brightness_request
+                    .lock()
+                    .expect("brightness request mutex poisoned") = Some((id, brightness));
             }
         });
     }
