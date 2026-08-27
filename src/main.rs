@@ -4,7 +4,7 @@
 #[cfg(not(any(target_os = "macos", windows)))]
 compile_error!("photon_count_adjuster supports macOS and Windows");
 
-use ddc_hi::{Ddc, Display};
+use ddc::Ddc;
 use eframe::egui;
 use std::{
     sync::{
@@ -18,6 +18,16 @@ const BRIGHTNESS_VCP_CODE: u8 = 0x10;
 const BRIGHTNESS_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
 const DISPLAY_SCAN_INTERVAL: Duration = Duration::from_secs(10);
 const WORKER_TICK: Duration = Duration::from_millis(250);
+
+#[cfg(target_os = "macos")]
+use ddc_macos::Monitor as PlatformMonitor;
+#[cfg(windows)]
+use ddc_winapi::Monitor as PlatformMonitor;
+
+#[cfg(target_os = "macos")]
+const MONITOR_BACKEND: &str = "macos";
+#[cfg(windows)]
+const MONITOR_BACKEND: &str = "winapi";
 
 #[derive(Clone)]
 struct MonitorSnapshot {
@@ -34,15 +44,16 @@ struct MonitorUpdate {
 }
 
 struct MonitorDevice {
-    display: Display,
+    display: PlatformMonitor,
     snapshot: MonitorSnapshot,
 }
 
 impl MonitorDevice {
-    fn new(display: Display) -> Self {
+    fn new(display: PlatformMonitor) -> Self {
+        let description = display.description();
         let snapshot = MonitorSnapshot {
-            id: display.info.id.clone(),
-            label: display.info.to_string(),
+            id: description.clone(),
+            label: format!("{MONITOR_BACKEND}:{description}"),
             brightness: 0,
             maximum: 100,
             error: None,
@@ -53,7 +64,7 @@ impl MonitorDevice {
     }
 
     fn refresh(&mut self) {
-        match self.display.handle.get_vcp_feature(BRIGHTNESS_VCP_CODE) {
+        match self.display.get_vcp_feature(BRIGHTNESS_VCP_CODE) {
             Ok(value) if value.maximum() > 0 => {
                 self.snapshot.brightness = value.value();
                 self.snapshot.maximum = value.maximum();
@@ -72,7 +83,6 @@ impl MonitorDevice {
     fn set_brightness(&mut self, brightness: u16) {
         match self
             .display
-            .handle
             .set_vcp_feature(BRIGHTNESS_VCP_CODE, brightness)
         {
             Ok(()) => {
@@ -91,11 +101,10 @@ enum MonitorCommand {
     Rescan,
 }
 
-fn scan_displays() -> Vec<MonitorDevice> {
-    Display::enumerate()
-        .into_iter()
-        .map(MonitorDevice::new)
-        .collect()
+fn scan_displays() -> Result<Vec<MonitorDevice>, String> {
+    PlatformMonitor::enumerate()
+        .map_err(|error| format!("Unable to scan displays: {error}"))
+        .map(|displays| displays.into_iter().map(MonitorDevice::new).collect())
 }
 
 fn publish_snapshots(
@@ -132,13 +141,15 @@ fn run_monitor_worker(
     brightness_request: Arc<Mutex<Option<(String, u16)>>>,
     ctx: egui::Context,
 ) {
-    let mut monitors = scan_displays();
-    if !publish_snapshots(&monitors, None, &updates, &ctx) {
+    let (mut monitors, mut worker_error) = match scan_displays() {
+        Ok(monitors) => (monitors, None),
+        Err(error) => (Vec::new(), Some(error)),
+    };
+    if !publish_snapshots(&monitors, worker_error.as_deref(), &updates, &ctx) {
         return;
     }
 
     let mut polling = false;
-    let mut worker_error = None;
     let mut last_brightness_refresh = Instant::now();
     let mut last_display_scan = Instant::now();
 
@@ -168,8 +179,13 @@ fn run_monitor_worker(
         match commands.recv_timeout(WORKER_TICK) {
             Ok(MonitorCommand::SetPolling(enabled)) => {
                 if enabled && !polling {
-                    monitors = scan_displays();
-                    worker_error = None;
+                    match scan_displays() {
+                        Ok(found) => {
+                            monitors = found;
+                            worker_error = None;
+                        }
+                        Err(error) => worker_error = Some(error),
+                    }
                     let now = Instant::now();
                     last_brightness_refresh = now;
                     last_display_scan = now;
@@ -178,8 +194,13 @@ fn run_monitor_worker(
                 polling = enabled;
             }
             Ok(MonitorCommand::Rescan) => {
-                monitors = scan_displays();
-                worker_error = None;
+                match scan_displays() {
+                    Ok(found) => {
+                        monitors = found;
+                        worker_error = None;
+                    }
+                    Err(error) => worker_error = Some(error),
+                }
                 let now = Instant::now();
                 last_brightness_refresh = now;
                 last_display_scan = now;
@@ -194,8 +215,13 @@ fn run_monitor_worker(
 
         let now = Instant::now();
         if polling && now.duration_since(last_display_scan) >= DISPLAY_SCAN_INTERVAL {
-            monitors = scan_displays();
-            worker_error = None;
+            match scan_displays() {
+                Ok(found) => {
+                    monitors = found;
+                    worker_error = None;
+                }
+                Err(error) => worker_error = Some(error),
+            }
             last_brightness_refresh = now;
             last_display_scan = now;
             changed = true;
