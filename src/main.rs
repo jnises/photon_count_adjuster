@@ -195,6 +195,7 @@ fn run_monitor_worker(
         let now = Instant::now();
         if polling && now.duration_since(last_display_scan) >= DISPLAY_SCAN_INTERVAL {
             monitors = scan_displays();
+            worker_error = None;
             last_brightness_refresh = now;
             last_display_scan = now;
             changed = true;
@@ -204,6 +205,7 @@ fn run_monitor_worker(
             for monitor in &mut monitors {
                 monitor.refresh();
             }
+            worker_error = None;
             last_brightness_refresh = now;
             changed = true;
         }
@@ -334,13 +336,14 @@ impl eframe::App for PhotonCountAdjuster {
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
             ui.set_min_size(ui.available_size());
 
-            if let Some(error) = &self.worker_error {
-                ui.colored_label(ui.visuals().error_fg_color, error);
-                return;
-            }
-
             if self.monitors.is_empty() {
-                ui.label("No DDC/CI displays found.");
+                ui.horizontal(|ui| {
+                    ui.label("No DDC/CI displays found.");
+                    if let Some(error) = &self.worker_error {
+                        ui.colored_label(ui.visuals().error_fg_color, "Error")
+                            .on_hover_text(error);
+                    }
+                });
                 ui.add_space(6.0);
                 if rescan_button(ui).clicked() {
                     self.send_command(MonitorCommand::Rescan);
@@ -349,7 +352,13 @@ impl eframe::App for PhotonCountAdjuster {
                 return;
             }
 
-            ui.label(egui::RichText::new("Display").small().weak());
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Display").small().weak());
+                if let Some(error) = &self.worker_error {
+                    ui.colored_label(ui.visuals().error_fg_color, "Error")
+                        .on_hover_text(error);
+                }
+            });
             let scan = ui
                 .horizontal(|ui| {
                     let button_width = ui.spacing().interact_size.y;
