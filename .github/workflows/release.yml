@@ -30,9 +30,15 @@ jobs:
       - name: Bundle macOS application
         if: runner.os == 'macOS'
         run: |
-          mkdir -p "target/release/Photon Count Adjuster.app/Contents/MacOS"
+          mkdir -p "target/release/Photon Count Adjuster.app/Contents/MacOS" "target/release/Photon Count Adjuster.app/Contents/Resources"
           cp target/release/photon_count_adjuster "target/release/Photon Count Adjuster.app/Contents/MacOS/"
           cp macos/Info.plist "target/release/Photon Count Adjuster.app/Contents/"
+          cp macos/AppIcon.icns "target/release/Photon Count Adjuster.app/Contents/Resources/"
+          version="${GITHUB_REF_NAME#v}"
+          plutil -replace CFBundleShortVersionString -string "$version" "target/release/Photon Count Adjuster.app/Contents/Info.plist"
+          plutil -replace CFBundleVersion -string "$version" "target/release/Photon Count Adjuster.app/Contents/Info.plist"
+          codesign --force --sign - --timestamp=none "target/release/Photon Count Adjuster.app"
+          codesign --verify --deep --strict --verbose=2 "target/release/Photon Count Adjuster.app"
           ditto -c -k --sequesterRsrc --keepParent "target/release/Photon Count Adjuster.app" target/release/photon_count_adjuster-macos.zip
       - name: Package Windows application
         if: runner.os == 'Windows'
