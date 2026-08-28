@@ -2,6 +2,8 @@
 
 A small macOS and Windows application for changing external monitor brightness over DDC/CI.
 
+![Photon Count Adjuster on macOS](screenshot.webp)
+
 ## Requirements
 
 - macOS or Windows
