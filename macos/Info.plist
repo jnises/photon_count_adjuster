@@ -8,12 +8,16 @@
     <string>photon_count_adjuster</string>
     <key>CFBundleIdentifier</key>
     <string>com.jnises.photon-count-adjuster</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon.icns</string>
     <key>CFBundleName</key>
     <string>Photon Count Adjuster</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.1.1</string>
+    <string>2.1.2</string>
+    <key>CFBundleVersion</key>
+    <string>2.1.2</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a compact macOS and Windows desktop application written in Rust. The egui application and DDC/CI monitor logic live in `src/main.rs`. `build.rs` embeds `icon.ico` and `photon_count_adjuster.exe.manifest` into Windows builds. Cargo metadata and pinned dependencies are in `Cargo.toml` and `Cargo.lock`. User-facing documentation and the current UI image are in `README.md` and `screenshot.png`. CI and release automation live under `.github/workflows/`.
+This is a compact macOS and Windows desktop application written in Rust. The egui application and DDC/CI monitor logic live in `src/main.rs`. `build.rs` embeds `icon.ico` and `photon_count_adjuster.exe.manifest` into Windows builds. Cargo metadata and pinned dependencies are in `Cargo.toml` and `Cargo.lock`. User-facing documentation and the current UI image are in `README.md` and `screenshot.webp`. CI and release automation live under `.github/workflows/`.
 
 Keep new modules under `src/` and split them out of `main.rs` only when they have a clear responsibility. Put unit tests beside the code they exercise; use `tests/` only for integration-level behavior.
 
